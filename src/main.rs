@@ -11,11 +11,14 @@ struct mat4f {
     data: [[f32; 4]; 4],
 }
 
+
+
 pub struct App {
     display: glium::Display<WindowSurface>,
     window: Window,
     t: f32,
     obj: obj_parcer::Obj,
+    obj_type: String,
 }
 
 // Replace the old perspective(...) with a simpler, OpenGL-friendly one.
@@ -84,11 +87,11 @@ impl ApplicationHandler for App {
                 // let x_off = self.t.sin() * 0.5;
                 // println!("x_off: {}, t: {}", x_off, self.t);
 
-                let simple_triangle = [
-                    obj_parcer::Vertex { position: [ -0.5, -0.5, 0.0 ] },
-                    obj_parcer::Vertex { position: [  0.0,  0.5, 0.0 ] },
-                    obj_parcer::Vertex { position: [  0.5, -0.25, 0.0 ] },
-                ];
+                // let simple_triangle = [
+                //     obj_parcer::Vertex { position: [ -0.5, -0.5, 0.0 ] },
+                //     obj_parcer::Vertex { position: [  0.0,  0.5, 0.0 ] },
+                //     obj_parcer::Vertex { position: [  0.5, -0.25, 0.0 ] },
+                // ];
 
                 let vertex_buffer = glium::VertexBuffer::new(&self.display, &self.obj.vertices).unwrap();
                 let indices = glium::index::IndexBuffer::new(&self.display, glium::index::PrimitiveType::TrianglesList, &self.obj.indices).unwrap();
@@ -102,13 +105,13 @@ impl ApplicationHandler for App {
                     // column 2
                     [0.0, 0.0, 1.0, 0.0],
                     // column 3 (translation goes in rows 0..2 of column 3, w=1 at row3)
-                    [0.0, 0.0, -10.0, 1.0],
+                    [0.0, 0.0, -5.0, 1.0],
                 ] };
 
                 // Rotation matrices around X, Y, Z axes (use helpers)
-                let rot_x = rotation_x(self.t);
+                let rot_x = rotation_x(0.0);
                 let rot_y = rotation_y(self.t);
-                let rot_z = rotation_z(self.t);
+                let rot_z = rotation_z(0.0);
                 // Compose rotations: R = Rz * Ry * Rx
                 let rotation_mat = mat_mul(&rot_z, &mat_mul(&rot_y, &rot_x));
                 
@@ -273,14 +276,14 @@ fn main() {
     let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
  
 
-    let obj = obj_parcer::Obj::read_file("../scope_res/resources/42.obj");
+    let obj = obj_parcer::Obj::read_file("../scope_res/resources/42.obj", "42");
     let mut app: App;
  
     match obj {
         Ok(o) => {
             println!("Successfully parsed OBJ file:");
             for vertex in &o.vertices {
-                println!("Vertex position: {:?}", vertex.position);                
+                println!("Vertex position: {:?}, UV: {:?}", vertex.position, vertex.uv);                
             }
             println!("Faces: {:?}", o.faces);
             println!("Indices: {:?}", o.indices);
@@ -290,6 +293,7 @@ fn main() {
                 window,
                 t: 0.0,
                 obj: o,
+                obj_type: "42".to_string(),
             };
         }
         Err(e) => {
