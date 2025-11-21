@@ -220,11 +220,13 @@ impl Obj {
                 
                 match content {
                     Ok(file) => {
-                        let a_occure: u32 = 0;
-                        let i: usize = 0;
-                        let last_a_index: usize = 0;
+                        let mut a_occure: u32 = 0;
+                        let mut i: usize = 0;
+                        let mut last_a_index: usize = 0;
+                        let mut width:u32;
+                        let mut height:u32;
                         for byte in &file {
-                            if *byte == 10
+                            if *byte == 10 && a_occure != 3
                             {
                                 if a_occure == 0 && file[last_a_index..i] != [80, 54]
                                 {
@@ -234,20 +236,60 @@ impl Obj {
                                 if a_occure == 1
                                 {
                                     let w_h_str = &file[last_a_index..i];
-                                    let width:u32;
-                                    let height:u32;
+                                    
                                     
                                     match std::str::from_utf8(w_h_str) {
                                         Ok(s)=>{
                                             let parts = s.split_whitespace();
-                                            let j = 0;
+                                            let mut j = 0;
                                             for part in parts
                                             {
-
-                                                j++;
+                                                let p = part.parse::<u32>();
+                                                match p {
+                                                    Ok(p) =>{
+                                                        if j == 0{
+                                                            width = p;
+                                                        }
+                                                        if j == 1{
+                                                            height = p;
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        println!("malformed ppm image: {:?}", e);
+                                                        return Err("malformed ppm".to_string());
+                                                    }
+                                                }
+                                                j += 1;
                                             }
                                         }
                                         Err(e)=>{
+                                            println!("malformed ppm image: {:?}", e);
+                                            return Err("malformed ppm".to_string());
+                                        }
+                                    }
+                                }
+                                if a_occure == 2
+                                {
+                                    let max_value = &file[last_a_index..i];
+                                    match std::str::from_utf8(max_value) {
+                                        Ok(s) => {
+                                            let val = s.parse::<u16>();
+                                            match val {
+                                                Ok(val) => {
+                                                    if val == 0 || val > 255
+                                                    {
+                                                        println!("malformed ppm image");
+                                                        return Err("malformed ppm".to_string());
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    println!("malformed ppm image: {:?}", e);
+                                                    return Err("malformed ppm".to_string());
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            println!("malformed ppm image: {:?}", e);
                                             return Err("malformed ppm".to_string());
                                         }
                                     }
@@ -257,26 +299,17 @@ impl Obj {
                             }
                             i += 1;
                         }
-                        
-                         
-                        match index {
-                            Some(index) => {
-                                
-
-                            }
-                            None => {
-                                println!("malformed ppm");
-                                return Err("malformed ppm".to_string());
-                            }
-                        }
                     }
                     Err(e) => {
-                        println!("error while reading texture: {:?}", e);
-                        return Err("error reading texture from filesystem".to_string());
+                        println!("malformed ppm image: {:?}", e);
+                        return Err("malformed ppm".to_string());
+                    
                     }
+                    
                 }
 
                 return Ok(obj_instance);
+                    
             }
 
             Err(e) => {
