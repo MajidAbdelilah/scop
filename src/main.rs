@@ -1,7 +1,7 @@
-use std::{process::exit};
+use std::{env, process::exit};
 
 use glium::{
-    Program, ProgramCreationError, Surface, Texture2d, glutin::surface::{SwapInterval, WindowSurface}, texture::RawImage2d, uniform, uniforms::Sampler, winit::{self, application::ApplicationHandler, window::{Fullscreen, Window}}
+    Program, ProgramCreationError, Surface, Texture2d, glutin::surface::{SwapInterval, WindowSurface}, uniform, winit::{self, application::ApplicationHandler, window::{Window}}
 };
 // mod structs;
 mod obj_parcer;
@@ -321,6 +321,26 @@ fn rotation_z(theta: f32) -> Mat4f {
 }
 
 fn main() {
+
+    let args:Vec<String> = env::args().collect();
+
+
+    if args.len() != 4
+    {
+        println!("fuck you, give me correct parameters. asshole!");
+        println!("usage: ./scop obj_path texture_path [box || sphere]");
+        return;
+    }
+    let obj_path = &args[1];
+    let texture_path = &args[2];
+    let uv_algorithm = &args[3];
+    
+    if uv_algorithm != "box" && uv_algorithm != "sphere"
+    { 
+        println!("you small dick, chouse eather box or sphere");
+        return;
+    }
+
     // 1. The **winit::EventLoop** for handling events.
     let event_loop = winit::event_loop::EventLoop::builder().build().unwrap();
     // 2. Create a glutin context and glium Display
@@ -341,9 +361,9 @@ fn main() {
     }
 
     let obj = obj_parcer::Obj::read_file(
-        "../scope_res/resources/teapot.obj",
-        "sphere",
-        "../scope_res/resources/blog-kitten-nursery-operation-kindness.ppm",
+        &obj_path,
+        &uv_algorithm,
+        &texture_path,
     );
     match obj {
         Ok(o) => {

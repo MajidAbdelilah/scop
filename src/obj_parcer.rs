@@ -61,9 +61,15 @@ impl Obj {
                             uv: [0.0; 2],
                         };
                         let mut vertex_face: [u32; 4] = [0; 4];
-                        parts.for_each(|part| {
+                        for part in parts
+                        {
+                            if part.starts_with("#")
+                            {
+                                break;
+                            }
                             match &arr {
                                 Some(_) => {
+                                    // println!("v part: {:?}", part);
                                     let val = part.parse::<f32>();
                                     match val {
                                         Ok(v) => {
@@ -116,8 +122,15 @@ impl Obj {
                             }
                             match &arr_faces {
                                 Some(_) => {
-                                    let val = part.parse::<u32>();
-                                    match val {
+                                    let val = part.split("/"); //.parse::<u32>();
+                                    let mut ver= "";
+                                    for v in val
+                                    {
+                                        ver = v;
+                                        break;
+                                    }
+                                    let ver = ver.parse::<u32>();
+                                    match ver {
                                         Ok(v) => {
                                             if index < 4 {
                                                 vertex_face[index] = v;
@@ -132,7 +145,7 @@ impl Obj {
                                 }
                                 None => {}
                             }
-                        });
+                        };
                         if index == 3 {
                             match arr {
                                 Some(v_arr) => {
@@ -175,7 +188,7 @@ impl Obj {
                 let mut vertices_count: u32 = 0;
                 let mut faces_count: u32 = 0;
                 lines.for_each(|line| {
-                    if line.len() > 0 && &line[0..2] == "v " {
+                    if line.len() > 2 && &line[0..2] == "v " {
                         simple_parse_func(
                             line,
                             Some(&mut obj_instance.vertices),
@@ -184,7 +197,7 @@ impl Obj {
                         );
                         vertices_count += 1;
                     }
-                    if line.len() > 0 && &line[0..2] == "f " {
+                    if line.len() > 2 && &line[0..2] == "f " {
                         simple_parse_func(
                             line,
                             None,
@@ -229,19 +242,20 @@ impl Obj {
                     }
                 }
 
-                if obj_type == "42"
+                if obj_type == "box"
                 {
                     for vertex in &mut obj_instance.vertices {
                         let normalized_vertex = vec3_normalize(vertex.position);
-                        if normalized_vertex[0] > normalized_vertex[1] && normalized_vertex[0] > normalized_vertex[2]
+                        println!("normalized_vec: {:?}", normalized_vertex);
+                        if normalized_vertex[0] >= normalized_vertex[1] && normalized_vertex[0] >= normalized_vertex[2]
                         {
                             vertex.uv = [normalized_vertex[2], normalized_vertex[1]];
                         } 
-                        if normalized_vertex[1] > normalized_vertex[0] && normalized_vertex[1] > normalized_vertex[2]
+                        else if normalized_vertex[1] >= normalized_vertex[0] && normalized_vertex[1] >= normalized_vertex[2]
                         {
                             vertex.uv = [normalized_vertex[0], normalized_vertex[2]];
                         } 
-                        if normalized_vertex[2] > normalized_vertex[0] && normalized_vertex[2] > normalized_vertex[1]
+                        else if normalized_vertex[2] >= normalized_vertex[0] && normalized_vertex[2] >= normalized_vertex[1]
                         {
                             vertex.uv = [normalized_vertex[0], normalized_vertex[1]];
                         } 
