@@ -1,72 +1,123 @@
-use std::process::exit;
+use std::{process::exit};
 
 use glium::{
-    Surface, glutin::surface::WindowSurface, uniform, winit::{self, application::ApplicationHandler, window::Window}
+    Program, ProgramCreationError, Surface, Texture2d, glutin::surface::{SwapInterval, WindowSurface}, texture::RawImage2d, uniform, uniforms::Sampler, winit::{self, application::ApplicationHandler, window::{Fullscreen, Window}}
 };
 // mod structs;
 mod obj_parcer;
+use obj_parcer::vec3_normalize;
 // use obj_parcer::Vertex;
 
-struct mat4f {
+struct Mat4f {
     data: [[f32; 4]; 4],
 }
 
-
-
-pub struct App {
+pub struct App{
     display: glium::Display<WindowSurface>,
     window: Window,
     t: f32,
     obj: obj_parcer::Obj,
-    obj_type: String,
+    program: Result<Program, ProgramCreationError>,
+    tex: Texture2d,
+    w_h: (u32, u32),
+}
+
+fn dot(a: &[f32; 3], b: &[f32; 3]) -> f32 {
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+}
+
+// Compute the cross product of two [f32; 3] vectors.
+fn cross(a: &[f32; 3], b: &[f32; 3]) -> [f32; 3] {
+    return [
+        a[1] * b[2] - a[2] * b[1],
+        a[2] * b[0] - a[0] * b[2],
+        a[0] * b[1] - a[1] * b[0],
+    ];
+}
+
+fn look_at(&position: &[f32; 3], &lookat: &[f32; 3], &up: &[f32; 3]) -> Mat4f {
+    
+    let mut look_at = lookat.clone();
+    look_at[0] -= position[0];
+    look_at[1] -= position[1];
+    look_at[2] -= position[2];
+    
+    let f: &[f32; 3] = &vec3_normalize(look_at); // Camera's direction vector
+    let s: &[f32; 3] = &vec3_normalize(cross(f, &up));  // Camera's right vector
+    let u: &[f32; 3] = &cross(s, f);              // Camera's corrected up vector
+
+    let mut result: Mat4f = Mat4f { data: [
+                        [1.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],] };
+    result.data[0][0] = s[0];
+    result.data[0][1] = u[0];
+    result.data[0][2] = -f[0];
+    result.data[0][3] = 0.0;
+
+    result.data[1][0] = s[1];
+    result.data[1][1] = u[1];
+    result.data[1][2] = -f[1];
+    result.data[1][3] = 0.0;
+
+    result.data[2][0] = s[2];
+    result.data[2][1] = u[2];
+    result.data[2][2] = -f[2];
+    result.data[2][3] = 0.0;
+
+    result.data[3][0] = -dot(s, &position);
+    result.data[3][1] = -dot(u, &position);
+    result.data[3][2] = dot(f, &position);
+    result.data[3][3] = 1.0;
+
+    return result;
 }
 
 // Replace the old perspective(...) with a simpler, OpenGL-friendly one.
 // Now takes fov_y (radians) and aspect ratio, returns column-major mat4 (data[column][row]).
-fn perspective(fov_y: f32, aspect: f32, near: f32, far: f32) -> mat4f {
-	// f = 1 / tan(fov_y/2)
-	let f = 1.0f32 / (fov_y * 0.5).tan();
+fn perspective(fov_y: f32, aspect: f32, near: f32, far: f32) -> Mat4f {
+    // f = 1 / tan(fov_y/2)
+    let f = 1.0 / (fov_y * 0.5).tan();
 
-	let mut m = mat4f { data: [[0.0; 4]; 4] };
+    let mut m = Mat4f {
+        data: [[0.0; 4]; 4],
+    };
 
-	// Column-major layout: data[column][row]
-	// Column 0
-	m.data[0][0] = f / aspect;
-	m.data[0][1] = 0.0;
-	m.data[0][2] = 0.0;
-	m.data[0][3] = 0.0;
+    // Column-major layout: data[column][row]
+    // Column 0
+    m.data[0][0] = f / aspect;
+    m.data[0][1] = 0.0;
+    m.data[0][2] = 0.0;
+    m.data[0][3] = 0.0;
 
-	// Column 1
-	m.data[1][0] = 0.0;
-	m.data[1][1] = f;
-	m.data[1][2] = 0.0;
-	m.data[1][3] = 0.0;
+    // Column 1
+    m.data[1][0] = 0.0;
+    m.data[1][1] = f;
+    m.data[1][2] = 0.0;
+    m.data[1][3] = 0.0;
 
-	// Column 2
-	// (far + near) / (near - far)  and -1 in row 3
-	m.data[2][0] = 0.0;
-	m.data[2][1] = 0.0;
-	m.data[2][2] = (far + near) / (near - far);
-	m.data[2][3] = -1.0;
+    // Column 2
+    // (far + near) / (near - far)  and -1 in row 3
+    m.data[2][0] = 0.0;
+    m.data[2][1] = 0.0;
+    m.data[2][2] = (far + near) / (near - far);
+    m.data[2][3] = -1.0;
 
-	// Column 3
-	// (2 * far * near) / (near - far)
-	m.data[3][0] = 0.0;
-	m.data[3][1] = 0.0;
-	m.data[3][2] = (2.0 * far * near) / (near - far);
-	m.data[3][3] = 0.0;
+    // Column 3
+    // (2 * far * near) / (near - far)
+    m.data[3][0] = 0.0;
+    m.data[3][1] = 0.0;
+    m.data[3][2] = (2.0 * far * near) / (near - far);
+    m.data[3][3] = 0.0;
 
-	m
+    m
 }
 
-
-
-
-impl ApplicationHandler for App {
+impl ApplicationHandler for App{
     fn resumed(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         // self.window = Some(event_loop.create_window(Window::default_attributes())).unwrap().unwrap();
     }
-
 
     fn window_event(
         &mut self,
@@ -75,14 +126,16 @@ impl ApplicationHandler for App {
         event: winit::event::WindowEvent,
     ) {
         match event {
-            glium::winit::event::WindowEvent::CloseRequested => event_loop.exit(),
+            glium::winit::event::WindowEvent::CloseRequested => {event_loop.exit(); exit(0)},
             glium::winit::event::WindowEvent::Resized(new_size) => {
                 self.display.resize(new_size.into());
+                self.w_h = new_size.into();
+                self.window.request_redraw();
             }
             glium::winit::event::WindowEvent::RedrawRequested => {
                 let mut target = self.display.draw();
-                target.clear_color(1.0, 1.0, 1.0, 1.0);
-                self.t += 0.02;
+                target.clear_color_and_depth((1.0, 1.0, 1.0, 1.0), 1.0);
+                self.t += 0.001;
 
                 // let x_off = self.t.sin() * 0.5;
                 // println!("x_off: {}, t: {}", x_off, self.t);
@@ -93,20 +146,28 @@ impl ApplicationHandler for App {
                 //     obj_parcer::Vertex { position: [  0.5, -0.25, 0.0 ] },
                 // ];
 
-                let vertex_buffer = glium::VertexBuffer::new(&self.display, &self.obj.vertices).unwrap();
-                let indices = glium::index::IndexBuffer::new(&self.display, glium::index::PrimitiveType::TrianglesList, &self.obj.indices).unwrap();
-                
+                let vertex_buffer =
+                    glium::VertexBuffer::new(&self.display, &self.obj.vertices).unwrap();
+                let indices = glium::index::IndexBuffer::new(
+                    &self.display,
+                    glium::index::PrimitiveType::TrianglesList,
+                    &self.obj.indices,
+                )
+                .unwrap();
+
                 // Translation: convert to column-major
-                let translation_mat: mat4f = mat4f { data: [
-                    // column 0
-                    [1.0, 0.0, 0.0, 0.0],
-                    // column 1
-                    [0.0, 1.0, 0.0, 0.0],
-                    // column 2
-                    [0.0, 0.0, 1.0, 0.0],
-                    // column 3 (translation goes in rows 0..2 of column 3, w=1 at row3)
-                    [0.0, 0.0, -5.0, 1.0],
-                ] };
+                let translation_mat: Mat4f = Mat4f {
+                    data: [
+                        // column 0
+                        [1.0, 0.0, 0.0, 0.0],
+                        // column 1
+                        [0.0, 1.0, 0.0, 0.0],
+                        // column 2
+                        [0.0, 0.0, 1.0, 0.0],
+                        // column 3 (translation goes in rows 0..2 of column 3, w=1 at row3)
+                        [0.0, 0.0, 2.0, 1.0],
+                    ],
+                };
 
                 // Rotation matrices around X, Y, Z axes (use helpers)
                 let rot_x = rotation_x(0.0);
@@ -114,76 +175,56 @@ impl ApplicationHandler for App {
                 let rot_z = rotation_z(0.0);
                 // Compose rotations: R = Rz * Ry * Rx
                 let rotation_mat = mat_mul(&rot_z, &mat_mul(&rot_y, &rot_x));
-                
-                // Scale (identity here) in column-major
-                let scale_mat: mat4f = mat4f { data: [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 0.0],
-                    [0.0, 0.0, 0.0, 1.0],
-                ] };
 
-                let (w, h) = self.display.get_framebuffer_dimensions();
-                let aspect = (w as f32) / (h as f32);
-                let fov_y: f32 = std::f32::consts::FRAC_PI_4; // 45 degrees
+                // Scale (identity here) in column-major
+                let scale_mat: Mat4f = Mat4f {
+                    data: [
+                        [1.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0],
+                        [0.0, 0.0, 0.0, 1.0],
+                    ],
+                };
+
+                let aspect = (self.w_h.0 as f32) / (self.w_h.1 as f32);
+                let fov: f32 = std::f32::consts::FRAC_PI_2; // 45 degrees
                 let near: f32 = 0.1;
                 let far: f32 = 100.0;
                 // Use new perspective API (fov_y, aspect, near, far)
-                let projection_mat: mat4f = perspective(fov_y, aspect, near, far);
+                let projection_mat: Mat4f = perspective(fov, aspect, near, far);
 
                 // View matrix: translate camera along Z by -3 (column-major)
-                let view_mat: mat4f = mat4f { data: [
-                    [1.0, 0.0, 0.0, 0.0],
-                    [0.0, 1.0, 0.0, 0.0],
-                    [0.0, 0.0, 1.0, 0.0],
-                    [0.0, 0.0, -3.0, 1.0],
-                ] };
+                let view_mat: Mat4f = look_at(&[0.0, 0.0, -3.0], &[0.0, 0.0, 5.0], &[0.0, 1.0, 0.0]);
+                 let sampler = self.tex
+                    .sampled()
+                    .wrap_function(glium::uniforms::SamplerWrapFunction::Repeat)
+                    .magnify_filter(glium::uniforms::MagnifySamplerFilter::Linear);
 
-
-                let vertex_shader_src = r#"
-                        #version 140
-                        in vec3 position;
-                        uniform mat4 rotation;
-                        uniform mat4 translation;
-                        uniform mat4 scale;
-                        uniform mat4 projection;
-                        uniform mat4 view;
-                        void main() {
-                            // Note: matrices are provided column-major so no transpose is necessary.
-                            // Apply model = translation * rotation * scale, then view and projection.
-                            gl_Position = projection * view * translation * rotation * scale * vec4(position, 1.0);
-                        }
-                    "#;
-
-                let fragment_shader_src = r#"
-                        #version 140
-
-                        out vec4 color;
-
-                        void main() {
-                            color = vec4(1.0, 0.0, 0.0, 1.0);
-                        }
-                    "#;
-
-                let program = glium::Program::from_source(
-                    &self.display,
-                    vertex_shader_src,
-                    fragment_shader_src,
-                    None,
-                );
-                match program {
+               
+                match &self.program {
                     Ok(program) => {
                         let drawing = target.draw(
                             &vertex_buffer,
                             &indices,
                             &program,
-                            &uniform! { 
-                                rotation: rotation_mat.data,
-                                translation: translation_mat.data,
-                                scale: scale_mat.data,
-                                projection: projection_mat.data,
-                                view: view_mat.data },
-                            &Default::default(),
+                            &uniform! {
+                            rotation: rotation_mat.data,
+                            translation: translation_mat.data,
+                            scale: scale_mat.data,
+                            projection: projection_mat.data,
+                            view: view_mat.data,
+                            tex: sampler,
+                            bb_min: self.obj.bb[0],
+                            bb_max: self.obj.bb[1],
+                         },
+                            &glium::DrawParameters { 
+                                depth: glium::Depth {
+                                    test: glium::DepthTest::IfLess,
+                                    write: true,
+                                    ..Default::default()
+                                }, 
+                                
+                                ..Default::default()}
                         );
                         match drawing {
                             Ok(_) => {
@@ -204,15 +245,19 @@ impl ApplicationHandler for App {
                     }
                 }
             }
-            _ => (),
+            _ => {
+                self.window.request_redraw();
+            },
         }
     }
 }
 
 // Column-major matrix multiplication: returns A * B.
 // Matrices use data[column][row].
-fn mat_mul(a: &mat4f, b: &mat4f) -> mat4f {
-    let mut m = mat4f { data: [[0.0; 4]; 4] };
+fn mat_mul(a: &Mat4f, b: &Mat4f) -> Mat4f {
+    let mut m = Mat4f {
+        data: [[0.0; 4]; 4],
+    };
     for col in 0..4 {
         for row in 0..4 {
             let mut sum = 0.0;
@@ -227,84 +272,159 @@ fn mat_mul(a: &mat4f, b: &mat4f) -> mat4f {
 }
 
 // --- new rotation helper functions (column-major) ---
-fn rotation_x(theta: f32) -> mat4f {
+fn rotation_x(theta: f32) -> Mat4f {
     let (s, c) = (theta.sin(), theta.cos());
-    mat4f { data: [
-        // column 0
-        [1.0, 0.0, 0.0, 0.0],
-        // column 1
-        [0.0, c, s, 0.0],
-        // column 2
-        [0.0, -s, c, 0.0],
-        // column 3
-        [0.0, 0.0, 0.0, 1.0],
-    ] }
+    Mat4f {
+        data: [
+            // column 0
+            [1.0, 0.0, 0.0, 0.0],
+            // column 1
+            [0.0, c, s, 0.0],
+            // column 2
+            [0.0, -s, c, 0.0],
+            // column 3
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    }
 }
 
-fn rotation_y(theta: f32) -> mat4f {
+fn rotation_y(theta: f32) -> Mat4f {
     let (s, c) = (theta.sin(), theta.cos());
-    mat4f { data: [
-        // column 0
-        [c, 0.0, -s, 0.0],
-        // column 1
-        [0.0, 1.0, 0.0, 0.0],
-        // column 2
-        [s, 0.0, c, 0.0],
-        // column 3
-        [0.0, 0.0, 0.0, 1.0],
-    ] }
+    Mat4f {
+        data: [
+            // column 0
+            [c, 0.0, -s, 0.0],
+            // column 1
+            [0.0, 1.0, 0.0, 0.0],
+            // column 2
+            [s, 0.0, c, 0.0],
+            // column 3
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    }
 }
 
-fn rotation_z(theta: f32) -> mat4f {
+fn rotation_z(theta: f32) -> Mat4f {
     let (s, c) = (theta.sin(), theta.cos());
-    mat4f { data: [
-        // column 0
-        [c, s, 0.0, 0.0],
-        // column 1
-        [-s, c, 0.0, 0.0],
-        // column 2
-        [0.0, 0.0, 1.0, 0.0],
-        // column 3
-        [0.0, 0.0, 0.0, 1.0],
-    ] }
+    Mat4f {
+        data: [
+            // column 0
+            [c, s, 0.0, 0.0],
+            // column 1
+            [-s, c, 0.0, 0.0],
+            // column 2
+            [0.0, 0.0, 1.0, 0.0],
+            // column 3
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    }
 }
 
 fn main() {
     // 1. The **winit::EventLoop** for handling events.
     let event_loop = winit::event_loop::EventLoop::builder().build().unwrap();
     // 2. Create a glutin context and glium Display
-    let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().build(&event_loop);
- 
+    let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().with_inner_size(1920, 1080).with_title("scop").with_vsync(false).build(&event_loop);
+    
+    let w_h = display.get_framebuffer_dimensions();
 
-    let obj = obj_parcer::Obj::read_file("../scope_res/resources/42.obj", "42");
-    let mut app: App;
- 
+    
+
+    match display.set_swap_interval(SwapInterval::DontWait) {
+        Ok(_) =>
+        {
+
+        }
+        Err(e) => {
+            println!("err setting swap interval: {:?}", e);
+        }
+    }
+
+    let obj = obj_parcer::Obj::read_file(
+        "../scope_res/resources/teapot.obj",
+        "sphere",
+        "../scope_res/resources/blog-kitten-nursery-operation-kindness.ppm",
+    );
     match obj {
         Ok(o) => {
             println!("Successfully parsed OBJ file:");
             for vertex in &o.vertices {
-                println!("Vertex position: {:?}, UV: {:?}", vertex.position, vertex.uv);                
+                println!(
+                    "Vertex position: {:?}, UV: {:?}",
+                    vertex.position, vertex.uv
+                );
             }
             println!("Faces: {:?}", o.faces);
             println!("Indices: {:?}", o.indices);
             println!("File Name: {}", o.file_name);
-            app = App {
+            // println!("texture: {:?}", o.texture);
+            println!("bb: {:?}", o.bb);
+            let image = glium::texture::RawImage2d::from_raw_rgb_reversed(
+                o.texture.as_slice(),
+                (o.texture_width, o.texture_height),
+            );
+
+            let texture = glium::texture::Texture2d::new(&display, image).unwrap();
+           
+            let vertex_shader_src = r#"
+                    #version 140
+                    in vec3 position;
+                    in vec2 uv;
+                    out vec2 v_uv;
+                    uniform mat4 rotation;
+                    uniform mat4 translation;
+                    uniform mat4 scale;
+                    uniform mat4 projection;
+                    uniform mat4 view;
+                    uniform vec3 bb_min;
+                    uniform vec3 bb_max;
+                    
+                    void main() {
+                        // Note: matrices are provided column-major so no transpose is necessary.
+                        // Apply model = translation * rotation * scale, then view and projection.
+                        v_uv = uv;
+                        vec3 center = (bb_min + bb_max) / 2;
+                        gl_Position = projection * view * translation * rotation * scale * vec4((position - center), 1.0);
+                    }
+                "#;
+
+            let fragment_shader_src = r#"
+                    #version 140
+                    in vec2 v_uv;
+                    out vec4 color;
+
+                    uniform sampler2D tex;
+
+                    void main() {
+                        color = texture(tex, v_uv);
+                    }
+                "#;
+
+            let program = glium::Program::from_source(
+                &display,
+                vertex_shader_src,
+                fragment_shader_src,
+                None,
+            );
+            let mut app = App {
                 display,
                 window,
                 t: 0.0,
                 obj: o,
-                obj_type: "42".to_string(),
+                program,
+                tex: texture,
+                w_h,
             };
+
+            let _run = event_loop.run_app(&mut app);
+            match _run {
+                Ok(_) => (),
+                Err(e) => println!("Error during event loop: {}", e),
+            }
         }
         Err(e) => {
             println!("Error parsing OBJ file: {}", e);
             exit(1);
         }
-        
-    }
-    let _run = event_loop.run_app(&mut app);
-    match _run {
-        Ok(_) => (),
-        Err(e) => println!("Error during event loop: {}", e),
     }
 }

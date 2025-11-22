@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-glium = "0.36"
+glium = { git = "https://github.com/glium/glium.git" }

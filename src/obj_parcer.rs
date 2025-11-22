@@ -1,4 +1,3 @@
-use std::ops::Index;
 
 #[derive(Copy, Clone)]
 pub struct Vertex {
@@ -12,11 +11,13 @@ pub struct Obj {
     pub faces: Vec<[u32; 4]>,
     pub indices: Vec<u32>,
     pub file_name: String,
-    pub texture: Vec<[u8; 3]>,
-
+    pub texture: Vec<u8>,
+    pub texture_width: u32,
+    pub texture_height: u32,
+    pub bb: [[f32; 3]; 2],
 }
 
-fn vec3_normalize(v: [f32; 3]) -> [f32; 3] {
+pub fn vec3_normalize(v: [f32; 3]) -> [f32; 3] {
     let len = (v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt();
     if len > 0.0 {
         [v[0] / len, v[1] / len, v[2] / len]
@@ -33,6 +34,9 @@ impl Obj {
             indices: Vec::new(),
             file_name: String::new(),
             texture: Vec::new(),
+            texture_height: 0,
+            texture_width: 0,
+            bb: [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
         }
     }
 
@@ -45,7 +49,7 @@ impl Obj {
                 let lines = data.lines();
                 let mut vertex_parce_failed = false;
 
-                let simple_parse_func =
+                let mut simple_parse_func =
                     |line: &str,
                      arr: Option<&mut Vec<Vertex>>,
                      arr_faces: Option<&mut Vec<[u32; 4]>>,
@@ -65,6 +69,40 @@ impl Obj {
                                         Ok(v) => {
                                             if index < 3 {
                                                 vertex.position[index] = v;
+                                                if index == 0
+                                                {
+                                                    if obj_instance.bb[0][0] > v
+                                                    {
+                                                        obj_instance.bb[0][0] = v;
+                                                    }
+                                                    if obj_instance.bb[1][0] < v
+                                                    {
+                                                        obj_instance.bb[1][0] = v;
+                                                    }
+                                                }
+                                                if index == 1
+                                                {
+                                                    if obj_instance.bb[0][1] > v
+                                                    {
+                                                        obj_instance.bb[0][1] = v;
+                                                    }
+                                                    if obj_instance.bb[1][1] < v
+                                                    {
+                                                        obj_instance.bb[1][1] = v;
+                                                    }
+                                                }
+                                                if index == 2
+                                                {
+                                                    if obj_instance.bb[0][2] > v
+                                                    {
+                                                        obj_instance.bb[0][2] = v;
+                                                    }
+                                                    if obj_instance.bb[1][2] < v
+                                                    {
+                                                        obj_instance.bb[1][2] = v;
+                                                    }
+                                                }
+                                                
                                             }
                                             index += 1;
                                         }
@@ -209,6 +247,16 @@ impl Obj {
                         } 
                         
                     }
+                } else if obj_type == "sphere"
+                {
+                    for vertex in &mut obj_instance.vertices {
+                        let x = vertex.position[0] - (obj_instance.bb[0][0] + obj_instance.bb[1][0])/2.0;
+                        let y = vertex.position[1] - (obj_instance.bb[0][1] + obj_instance.bb[1][1])/2.0;
+                        let z = vertex.position[2] - (obj_instance.bb[0][2] + obj_instance.bb[1][2])/2.0;
+                        let y_clamp = y.clamp(-1.0, 1.0);
+                        
+                        vertex.uv = [(z.atan2(x) / (2.0*std::f32::consts::PI) + 0.5), y_clamp.asin() / std::f32::consts::PI + 0.5];
+                    }
                 }
 
                 if !texture_path.ends_with(".ppm")
@@ -221,16 +269,20 @@ impl Obj {
                 match content {
                     Ok(file) => {
                         let mut a_occure: u32 = 0;
-                        let mut i: usize = 0;
                         let mut last_a_index: usize = 0;
-                        let mut width:u32;
-                        let mut height:u32;
-                        for byte in &file {
-                            if *byte == 10 && a_occure != 3
+                        let mut width:u32 = 0;
+                        let mut height:u32 = 0;
+                        let mut reserve_lock = false;
+                        let mut byte_index:usize = 0;
+                        let mut byte_index_start:usize = 0;
+                        
+                        for i in 0..file.len() {
+                            if file[i] == 10 && a_occure != 3
                             {
                                 if a_occure == 0 && file[last_a_index..i] != [80, 54]
                                 {
-                                    return Err("malformed ppm".to_string());
+                                    
+                                    return Err("malformed ppm 0".to_string());
                                 }
 
                                 if a_occure == 1
@@ -240,6 +292,7 @@ impl Obj {
                                     
                                     match std::str::from_utf8(w_h_str) {
                                         Ok(s)=>{
+                                            println!("s 1: {:?}", s);
                                             let parts = s.split_whitespace();
                                             let mut j = 0;
                                             for part in parts
@@ -255,16 +308,16 @@ impl Obj {
                                                         }
                                                     }
                                                     Err(e) => {
-                                                        println!("malformed ppm image: {:?}", e);
-                                                        return Err("malformed ppm".to_string());
+                                                        println!("malformed ppm image 1: {:?}", e);
+                                                        return Err("malformed ppm 1".to_string());
                                                     }
                                                 }
                                                 j += 1;
                                             }
                                         }
                                         Err(e)=>{
-                                            println!("malformed ppm image: {:?}", e);
-                                            return Err("malformed ppm".to_string());
+                                            println!("malformed ppm image 1: {:?}", e);
+                                            return Err("malformed ppm 1".to_string());
                                         }
                                     }
                                 }
@@ -273,31 +326,57 @@ impl Obj {
                                     let max_value = &file[last_a_index..i];
                                     match std::str::from_utf8(max_value) {
                                         Ok(s) => {
+                                            println!("s 2: {:?}", s);
                                             let val = s.parse::<u16>();
                                             match val {
                                                 Ok(val) => {
                                                     if val == 0 || val > 255
                                                     {
-                                                        println!("malformed ppm image");
-                                                        return Err("malformed ppm".to_string());
+                                                        println!("malformed ppm image 2");
+                                                        return Err("malformed ppm 2".to_string());
                                                     }
                                                 }
                                                 Err(e) => {
-                                                    println!("malformed ppm image: {:?}", e);
-                                                    return Err("malformed ppm".to_string());
+                                                    println!("malformed ppm image 2: {:?}", e);
+                                                    return Err("malformed ppm 2".to_string());
                                                 }
                                             }
                                         }
                                         Err(e) => {
-                                            println!("malformed ppm image: {:?}", e);
-                                            return Err("malformed ppm".to_string());
+                                            println!("malformed ppm image 2: {:?}", e);
+                                            return Err("malformed ppm 2".to_string());
                                         }
                                     }
                                 }
                                 a_occure += 1;
-                                last_a_index = i;
+                                last_a_index = i + 1;
                             }
-                            i += 1;
+                            
+                            if a_occure == 3  
+                            {
+                                if !reserve_lock
+                                {
+                                    obj_instance.texture.reserve(width as usize * height as usize);
+                                    reserve_lock = true;
+                                    byte_index = i + 1;
+                                    byte_index_start = byte_index;
+                                }
+
+                                obj_instance.texture.push(file[byte_index]);
+                                byte_index+=1;
+                                if(byte_index - byte_index_start) >= (width as usize * height as usize * 3)
+                                {
+                                    println!("successfully read the texture buffer, read: {:?}, width * height * 3: {:?}", 
+                                    (byte_index - byte_index_start), 
+                                    (width as usize * height as usize * 3));
+                                    obj_instance.texture.shrink_to_fit();
+                                    obj_instance.texture_width = width;
+                                    obj_instance.texture_height = height;
+                                    
+                                    break;
+                                }
+                                // obj_instance.texture.push(value);
+                            }
                         }
                     }
                     Err(e) => {
