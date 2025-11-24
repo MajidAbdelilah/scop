@@ -1,10 +1,7 @@
 use std::{env, process::exit};
 
 use glium::{
-    Program, ProgramCreationError, Surface, Texture2d,
-    glutin::surface::{SwapInterval, WindowSurface},
-    uniform,
-    winit::{self, application::ApplicationHandler, keyboard::PhysicalKey, window::Window},
+    Program, ProgramCreationError, Surface, Texture2d, glutin::surface::{SwapInterval, WindowSurface}, implement_uniform_block, uniform, winit::{self, application::ApplicationHandler, keyboard::PhysicalKey, window::Window}
 };
 // mod structs;
 mod obj_parcer;
@@ -14,6 +11,12 @@ use obj_parcer::vec3_normalize;
 struct Mat4f {
     data: [[f32; 4]; 4],
 }
+
+#[derive(Copy, Clone)]
+struct ColorArr
+{
+    color_position: [[f32; 4]; 5],
+}implement_uniform_block!(ColorArr, color_position);
 
 pub struct App {
     display: glium::Display<WindowSurface>,
@@ -32,7 +35,11 @@ pub struct App {
     key: winit::keyboard::PhysicalKey,
     isrepeat_key: bool,
     is_key_pressed: bool,
-    trigger_rot_anim: bool,
+    trigger_rot_anim: (bool, winit::keyboard::PhysicalKey),
+    color_positions: glium::uniforms::UniformBuffer<ColorArr>,
+    color: ColorArr,
+    is_lizzard: bool,
+    time_mul_delta: f64,
 }
 
 fn dot(a: &[f32; 3], b: &[f32; 3]) -> f32 {
@@ -167,6 +174,13 @@ impl ApplicationHandler for App {
                 {
                     self.set_texture = !self.set_texture;
                 }
+                if event.physical_key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyT)
+                    && event.state.is_pressed()
+                    && event.repeat == false
+                {
+                    self.is_lizzard = !self.is_lizzard;
+                }
+
                 self.key = event.physical_key;
                 self.isrepeat_key = event.repeat;
                 self.is_key_pressed = event.state.is_pressed();
@@ -177,10 +191,27 @@ impl ApplicationHandler for App {
 
                 let mut target = self.display.draw();
                 target.clear_color_and_depth((1.0, 1.0, 1.0, 1.0), 1.0);
+                self.time_mul_delta += 1.0 * self.fram_time;
 
+                if self.is_lizzard
+                {
+                    let mut i = 0;
+                    for color in 0..5
+                    {
+                        self.color.color_position[i][0] = (self.color.color_position[(i+6) % 5][i % 3] + self.time_mul_delta as f32 * 4.0).sin().abs();
+                        self.color.color_position[i][1] = (self.color.color_position[(i+3) % 5][i % 3] + self.time_mul_delta as f32 * 2.0).cos().abs();
+                        self.color.color_position[i][2] = (self.color.color_position[(i+2) % 5][i % 3] + self.time_mul_delta as f32 * 4.0).cos().abs();
+                        self.color.color_position[i][3] = 0.0;
+                        println!("color: {:?}", color);
+                        i += 1;
+                    }
+
+
+                    self.color_positions.write(&self.color);
+                }
                 
                 self.t +=  2.0 * self.fram_time;
-                if self.t >= (std::f64::consts::PI * 2.0) && self.trigger_rot_anim == false
+                if self.t >= (std::f64::consts::PI * 2.0) && self.trigger_rot_anim.0 == false
                 {
                     self.t -= std::f64::consts::PI * 2.0;
                 }
@@ -190,25 +221,31 @@ impl ApplicationHandler for App {
                     && self.isrepeat_key == false
                 {
                     self.lerp_time = 0.0;
-                    self.trigger_rot_anim = true;
+                    self.trigger_rot_anim.0 = true;
+                    self.trigger_rot_anim.1 = self.key;
+                    
                 }
                 if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyE)
                     && self.is_key_pressed
                     && self.isrepeat_key == false
                 {
-                    self.trigger_rot_anim = true;
+                    self.trigger_rot_anim.0 = true;
+                    self.trigger_rot_anim.1 = self.key;
+                    
                     self.lerp_time = 0.0;
                 }
                 if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyR)
                     && self.is_key_pressed
                     && self.isrepeat_key == false
                 {
-                    self.trigger_rot_anim = true;
+                    self.trigger_rot_anim.0 = true;
+                    self.trigger_rot_anim.1 = self.key;
+                    
                     self.lerp_time = 0.0;
                 }
 
-                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyW)
-                    && self.trigger_rot_anim
+                if self.trigger_rot_anim.1 == PhysicalKey::Code(winit::keyboard::KeyCode::KeyW)
+                    && self.trigger_rot_anim.0
                 {
                     self.rotation_axis;
                     if self.rotation_axis[0] < 0.999 {
@@ -227,15 +264,15 @@ impl ApplicationHandler for App {
                         for v in &mut self.rotation_axis {
                             *v = v.round();
                         }
-                        self.trigger_rot_anim = false;
+                        self.trigger_rot_anim.0 = false;
                         self.lerp_time = 0.0;
                     } else {
                         self.lerp_time += (0.001 * self.fram_time) as f32;
                     }
                 }
 
-                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyE)
-                    && self.trigger_rot_anim
+                if self.trigger_rot_anim.1 == PhysicalKey::Code(winit::keyboard::KeyCode::KeyE)
+                    && self.trigger_rot_anim.0
                 {
                     self.rotation_axis;
                     if self.rotation_axis[0] > 0.001 {
@@ -254,14 +291,14 @@ impl ApplicationHandler for App {
                         for v in &mut self.rotation_axis {
                             *v = v.round();
                         }
-                        self.trigger_rot_anim = false;
+                        self.trigger_rot_anim.0 = false;
                         self.lerp_time = 0.0;
                     } else {
                         self.lerp_time += (0.001 * self.fram_time) as f32;
                     }
                 }
-                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyR)
-                    && self.trigger_rot_anim
+                if self.trigger_rot_anim.1 == PhysicalKey::Code(winit::keyboard::KeyCode::KeyR)
+                    && self.trigger_rot_anim.0
                 {
                     self.rotation_axis;
                     if self.rotation_axis[0] > 0.001 {
@@ -280,7 +317,7 @@ impl ApplicationHandler for App {
                         for v in &mut self.rotation_axis {
                             *v = v.round();
                         }
-                        self.trigger_rot_anim = false;
+                        self.trigger_rot_anim.0 = false;
                         self.lerp_time = 0.0;
                     } else {
                         self.lerp_time += (0.001 * self.fram_time) as f32;
@@ -382,6 +419,7 @@ impl ApplicationHandler for App {
                                bb_min: self.obj.bb[0],
                                bb_max: self.obj.bb[1],
                                shading_lerp_val: self.shading_lerp_val,
+                               positions: &self.color_positions,
                             },
                             &glium::DrawParameters {
                                 depth: glium::Depth {
@@ -558,25 +596,16 @@ fn main() {
                     uniform mat4 view;
                     uniform vec3 bb_min;
                     uniform vec3 bb_max;
+                    layout(std140) uniform positions{
+                        vec4 color_position[5];
+                    };
                     flat out vec3 vertex_color;
                     
                     void main() {
                         // Note: matrices are provided column-major so no transpose is necessary.
                         // Apply model = translation * rotation * scale, then view and projection.
-                         vec3 positions[10]; 
 
-                         positions[0] = vec3(0.0, 0.0, 0.0);
-                         positions[1] = vec3(0.2, 0.2, 0.2);
-                        positions[2] = vec3(0.4, 0.4, 0.4);
-                        positions[3] = vec3(0.6, 0.6, 0.6);
-                        positions[4] = vec3(0.8, 0.8, 0.8);
-                        positions[5] = vec3(0.6, 0.6, 0.6);
-                        positions[6] = vec3(0.7, 0.7, 0.7);
-                        positions[7] = vec3(0.8, 0.8, 0.8);
-                        positions[8] = vec3(0.9, 0.9, 0.9);
-                        positions[9] = vec3(1.0, 1.0, 1.0);
-                        
-                        vertex_color = positions[(gl_VertexID / 3) % 5];
+                        vertex_color = color_position[(gl_VertexID / 3) % 5].xyz;
                         v_uv = uv;
                         vec3 center = (bb_min + bb_max) / 2;
                         gl_Position = projection * view * translation * rotation * scale * vec4((position - center), 1.0);
@@ -598,6 +627,8 @@ fn main() {
 
             let program =
                 glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None);
+            let colors_uniform = glium::uniforms::UniformBuffer::new(&display,
+                    ColorArr { color_position: [[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2], [0.3, 0.3, 0.3, 0.0], [0.4, 0.4, 0.4, 0.0], [0.5, 0.5, 0.5, 0.0]] }).unwrap();
             let mut app = App {
                 display,
                 window,
@@ -615,7 +646,11 @@ fn main() {
                 key: PhysicalKey::Code(winit::keyboard::KeyCode::F1),
                 isrepeat_key: false,
                 is_key_pressed: false,
-                trigger_rot_anim: false,
+                trigger_rot_anim: (false, PhysicalKey::Code(winit::keyboard::KeyCode::F1)),
+                color_positions: colors_uniform,
+                is_lizzard: false,
+                color: ColorArr { color_position: [[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2], [0.3, 0.3, 0.3, 0.0], [0.4, 0.4, 0.4, 0.0], [0.5, 0.5, 0.5, 0.0]] },
+                time_mul_delta: 0.0,
             };
 
             let _run = event_loop.run_app(&mut app);
