@@ -1,7 +1,10 @@
 use std::{env, process::exit};
 
 use glium::{
-    Program, ProgramCreationError, Surface, Texture2d, glutin::surface::{SwapInterval, WindowSurface}, uniform, winit::{self, application::ApplicationHandler, window::{Window}}
+    Program, ProgramCreationError, Surface, Texture2d,
+    glutin::surface::{SwapInterval, WindowSurface},
+    uniform,
+    winit::{self, application::ApplicationHandler, keyboard::PhysicalKey, window::Window},
 };
 // mod structs;
 mod obj_parcer;
@@ -12,14 +15,24 @@ struct Mat4f {
     data: [[f32; 4]; 4],
 }
 
-pub struct App{
+pub struct App {
     display: glium::Display<WindowSurface>,
     window: Window,
-    t: f32,
+    t: f64,
     obj: obj_parcer::Obj,
     program: Result<Program, ProgramCreationError>,
     tex: Texture2d,
     w_h: (u32, u32),
+    shading_lerp_val: f32,
+    fram_time: f64,
+    set_texture: bool,
+    rotation_axis: [f32; 3],
+    rotation_direction: f32,
+    lerp_time: f32,
+    key: winit::keyboard::PhysicalKey,
+    isrepeat_key: bool,
+    is_key_pressed: bool,
+    trigger_rot_anim: bool,
 }
 
 fn dot(a: &[f32; 3], b: &[f32; 3]) -> f32 {
@@ -36,21 +49,23 @@ fn cross(a: &[f32; 3], b: &[f32; 3]) -> [f32; 3] {
 }
 
 fn look_at(&position: &[f32; 3], &lookat: &[f32; 3], &up: &[f32; 3]) -> Mat4f {
-    
     let mut look_at = lookat.clone();
     look_at[0] -= position[0];
     look_at[1] -= position[1];
     look_at[2] -= position[2];
-    
-    let f: &[f32; 3] = &vec3_normalize(look_at); // Camera's direction vector
-    let s: &[f32; 3] = &vec3_normalize(cross(f, &up));  // Camera's right vector
-    let u: &[f32; 3] = &cross(s, f);              // Camera's corrected up vector
 
-    let mut result: Mat4f = Mat4f { data: [
-                        [1.0, 0.0, 0.0, 0.0],
-                        [0.0, 1.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0],
-                        [0.0, 0.0, 0.0, 1.0],] };
+    let f: &[f32; 3] = &vec3_normalize(look_at); // Camera's direction vector
+    let s: &[f32; 3] = &vec3_normalize(cross(f, &up)); // Camera's right vector
+    let u: &[f32; 3] = &cross(s, f); // Camera's corrected up vector
+
+    let mut result: Mat4f = Mat4f {
+        data: [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ],
+    };
     result.data[0][0] = s[0];
     result.data[0][1] = u[0];
     result.data[0][2] = -f[0];
@@ -114,7 +129,12 @@ fn perspective(fov_y: f32, aspect: f32, near: f32, far: f32) -> Mat4f {
     m
 }
 
-impl ApplicationHandler for App{
+fn lerp(a: f32, b: f32, t: f32) -> f32 {
+    let lerp = a + (b - a) * t;
+    return lerp;
+}
+
+impl ApplicationHandler for App {
     fn resumed(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         // self.window = Some(event_loop.create_window(Window::default_attributes())).unwrap().unwrap();
     }
@@ -126,17 +146,161 @@ impl ApplicationHandler for App{
         event: winit::event::WindowEvent,
     ) {
         match event {
-            glium::winit::event::WindowEvent::CloseRequested => {event_loop.exit(); exit(0)},
+            glium::winit::event::WindowEvent::CloseRequested => {
+                event_loop.exit();
+                exit(0)
+            }
             glium::winit::event::WindowEvent::Resized(new_size) => {
                 self.display.resize(new_size.into());
                 self.w_h = new_size.into();
                 self.window.request_redraw();
             }
+
+            glium::winit::event::WindowEvent::KeyboardInput {
+                device_id: _,
+                event,
+                is_synthetic: _,
+            } => {
+                if event.physical_key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyQ)
+                    && event.state.is_pressed()
+                    && event.repeat == false
+                {
+                    self.set_texture = !self.set_texture;
+                }
+                self.key = event.physical_key;
+                self.isrepeat_key = event.repeat;
+                self.is_key_pressed = event.state.is_pressed();
+            }
+
             glium::winit::event::WindowEvent::RedrawRequested => {
+                let start_time = std::time::Instant::now();
+
                 let mut target = self.display.draw();
                 target.clear_color_and_depth((1.0, 1.0, 1.0, 1.0), 1.0);
-                self.t += 0.001;
 
+                
+                self.t +=  2.0 * self.fram_time;
+                if self.t >= (std::f64::consts::PI * 2.0) && self.trigger_rot_anim == false
+                {
+                    self.t -= std::f64::consts::PI * 2.0;
+                }
+
+                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyW)
+                    && self.is_key_pressed
+                    && self.isrepeat_key == false
+                {
+                    self.lerp_time = 0.0;
+                    self.trigger_rot_anim = true;
+                }
+                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyE)
+                    && self.is_key_pressed
+                    && self.isrepeat_key == false
+                {
+                    self.trigger_rot_anim = true;
+                    self.lerp_time = 0.0;
+                }
+                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyR)
+                    && self.is_key_pressed
+                    && self.isrepeat_key == false
+                {
+                    self.trigger_rot_anim = true;
+                    self.lerp_time = 0.0;
+                }
+
+                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyW)
+                    && self.trigger_rot_anim
+                {
+                    self.rotation_axis;
+                    if self.rotation_axis[0] < 0.999 {
+                        self.rotation_axis[0] = lerp(self.rotation_axis[0], 1.0, self.lerp_time);
+                    }
+                    if self.rotation_axis[1] > 0.001 {
+                        self.rotation_axis[1] = lerp(self.rotation_axis[1], 0.0, self.lerp_time);
+                    }
+                    if self.rotation_axis[2] > 0.001 {
+                        self.rotation_axis[2] = lerp(self.rotation_axis[2], 0.0, self.lerp_time);
+                    }
+                    if self.rotation_axis[0] > 0.999
+                        && self.rotation_axis[1] < 0.001
+                        && self.rotation_axis[2] < 0.001
+                    {
+                        for v in &mut self.rotation_axis {
+                            *v = v.round();
+                        }
+                        self.trigger_rot_anim = false;
+                        self.lerp_time = 0.0;
+                    } else {
+                        self.lerp_time += (0.001 * self.fram_time) as f32;
+                    }
+                }
+
+                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyE)
+                    && self.trigger_rot_anim
+                {
+                    self.rotation_axis;
+                    if self.rotation_axis[0] > 0.001 {
+                        self.rotation_axis[0] = lerp(self.rotation_axis[0], 0.0, self.lerp_time);
+                    }
+                    if self.rotation_axis[1] < 0.999 {
+                        self.rotation_axis[1] = lerp(self.rotation_axis[1], 1.0, self.lerp_time);
+                    }
+                    if self.rotation_axis[2] > 0.001 {
+                        self.rotation_axis[2] = lerp(self.rotation_axis[2], 0.0, self.lerp_time);
+                    }
+                    if self.rotation_axis[0] < 0.001
+                        && self.rotation_axis[1] > 0.999
+                        && self.rotation_axis[2] < 0.001
+                    {
+                        for v in &mut self.rotation_axis {
+                            *v = v.round();
+                        }
+                        self.trigger_rot_anim = false;
+                        self.lerp_time = 0.0;
+                    } else {
+                        self.lerp_time += (0.001 * self.fram_time) as f32;
+                    }
+                }
+                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyR)
+                    && self.trigger_rot_anim
+                {
+                    self.rotation_axis;
+                    if self.rotation_axis[0] > 0.001 {
+                        self.rotation_axis[0] = lerp(self.rotation_axis[0], 0.0, self.lerp_time);
+                    }
+                    if self.rotation_axis[1] > 0.001 {
+                        self.rotation_axis[1] = lerp(self.rotation_axis[1], 0.0, self.lerp_time);
+                    }
+                    if self.rotation_axis[2] < 0.999 {
+                        self.rotation_axis[2] = lerp(self.rotation_axis[2], 1.0, self.lerp_time);
+                    }
+                    if self.rotation_axis[0] < 0.001
+                        && self.rotation_axis[1] < 0.001
+                        && self.rotation_axis[2] > 0.999
+                    {
+                        for v in &mut self.rotation_axis {
+                            *v = v.round();
+                        }
+                        self.trigger_rot_anim = false;
+                        self.lerp_time = 0.0;
+                    } else {
+                        self.lerp_time += (0.001 * self.fram_time) as f32;
+                    }
+                }
+
+                println!("rotation axis: {:?}", self.rotation_axis);
+
+                println!("rotation axis: {:?}", self.lerp_time);
+
+                println!("rotation axis: {:?}", self.rotation_direction);
+
+                if self.set_texture && self.shading_lerp_val < 1.0 {
+                    self.shading_lerp_val += (2.0 * self.fram_time) as f32;
+                }
+                if !self.set_texture && self.shading_lerp_val > 0.0 {
+                    self.shading_lerp_val -= (2.0 * self.fram_time) as f32;
+                }
+
+                self.shading_lerp_val = self.shading_lerp_val.clamp(0.0, 1.0);
                 // let x_off = self.t.sin() * 0.5;
                 // println!("x_off: {}, t: {}", x_off, self.t);
 
@@ -170,9 +334,9 @@ impl ApplicationHandler for App{
                 };
 
                 // Rotation matrices around X, Y, Z axes (use helpers)
-                let rot_x = rotation_x(0.0);
-                let rot_y = rotation_y(self.t);
-                let rot_z = rotation_z(0.0);
+                let rot_x = rotation_x(self.rotation_axis[0] * self.rotation_direction * self.t as f32);
+                let rot_y = rotation_y(self.rotation_axis[1] * self.rotation_direction * self.t as f32);
+                let rot_z = rotation_z(self.rotation_axis[2] * self.rotation_direction * self.t as f32);
                 // Compose rotations: R = Rz * Ry * Rx
                 let rotation_mat = mat_mul(&rot_z, &mat_mul(&rot_y, &rot_x));
 
@@ -194,13 +358,14 @@ impl ApplicationHandler for App{
                 let projection_mat: Mat4f = perspective(fov, aspect, near, far);
 
                 // View matrix: translate camera along Z by -3 (column-major)
-                let view_mat: Mat4f = look_at(&[0.0, 0.0, -3.0], &[0.0, 0.0, 5.0], &[0.0, 1.0, 0.0]);
-                 let sampler = self.tex
+                let view_mat: Mat4f =
+                    look_at(&[0.0, 0.0, -3.0], &[0.0, 0.0, 5.0], &[0.0, 1.0, 0.0]);
+                let sampler = self
+                    .tex
                     .sampled()
                     .wrap_function(glium::uniforms::SamplerWrapFunction::Repeat)
                     .magnify_filter(glium::uniforms::MagnifySamplerFilter::Linear);
 
-               
                 match &self.program {
                     Ok(program) => {
                         let drawing = target.draw(
@@ -208,23 +373,25 @@ impl ApplicationHandler for App{
                             &indices,
                             &program,
                             &uniform! {
-                            rotation: rotation_mat.data,
-                            translation: translation_mat.data,
-                            scale: scale_mat.data,
-                            projection: projection_mat.data,
-                            view: view_mat.data,
-                            tex: sampler,
-                            bb_min: self.obj.bb[0],
-                            bb_max: self.obj.bb[1],
-                         },
-                            &glium::DrawParameters { 
+                               rotation: rotation_mat.data,
+                               translation: translation_mat.data,
+                               scale: scale_mat.data,
+                               projection: projection_mat.data,
+                               view: view_mat.data,
+                               tex: sampler,
+                               bb_min: self.obj.bb[0],
+                               bb_max: self.obj.bb[1],
+                               shading_lerp_val: self.shading_lerp_val,
+                            },
+                            &glium::DrawParameters {
                                 depth: glium::Depth {
                                     test: glium::DepthTest::IfLess,
                                     write: true,
                                     ..Default::default()
-                                }, 
-                                
-                                ..Default::default()}
+                                },
+
+                                ..Default::default()
+                            },
                         );
                         match drawing {
                             Ok(_) => {
@@ -244,10 +411,12 @@ impl ApplicationHandler for App{
                         exit(1);
                     }
                 }
+                let end_time = std::time::Instant::now();
+                self.fram_time = end_time.duration_since(start_time).as_secs_f64();
             }
             _ => {
                 self.window.request_redraw();
-            },
+            }
         }
     }
 }
@@ -321,12 +490,9 @@ fn rotation_z(theta: f32) -> Mat4f {
 }
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
 
-    let args:Vec<String> = env::args().collect();
-
-
-    if args.len() != 4
-    {
+    if args.len() != 4 {
         println!("fuck you, give me correct parameters. asshole!");
         println!("usage: ./scop obj_path texture_path [box || sphere]");
         return;
@@ -334,9 +500,8 @@ fn main() {
     let obj_path = &args[1];
     let texture_path = &args[2];
     let uv_algorithm = &args[3];
-    
-    if uv_algorithm != "box" && uv_algorithm != "sphere"
-    { 
+
+    if uv_algorithm != "box" && uv_algorithm != "sphere" {
         println!("you small dick, chouse eather box or sphere");
         return;
     }
@@ -344,27 +509,22 @@ fn main() {
     // 1. The **winit::EventLoop** for handling events.
     let event_loop = winit::event_loop::EventLoop::builder().build().unwrap();
     // 2. Create a glutin context and glium Display
-    let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new().with_inner_size(1920, 1080).with_title("scop").with_vsync(false).build(&event_loop);
-    
+    let (window, display) = glium::backend::glutin::SimpleWindowBuilder::new()
+        .with_inner_size(1920, 1080)
+        .with_title("scop")
+        .with_vsync(false)
+        .build(&event_loop);
+
     let w_h = display.get_framebuffer_dimensions();
 
-    
-
     match display.set_swap_interval(SwapInterval::DontWait) {
-        Ok(_) =>
-        {
-
-        }
+        Ok(_) => {}
         Err(e) => {
             println!("err setting swap interval: {:?}", e);
         }
     }
 
-    let obj = obj_parcer::Obj::read_file(
-        &obj_path,
-        &uv_algorithm,
-        &texture_path,
-    );
+    let obj = obj_parcer::Obj::read_file(&obj_path, &uv_algorithm, &texture_path);
     match obj {
         Ok(o) => {
             println!("Successfully parsed OBJ file:");
@@ -385,7 +545,7 @@ fn main() {
             );
 
             let texture = glium::texture::Texture2d::new(&display, image).unwrap();
-           
+
             let vertex_shader_src = r#"
                     #version 140
                     in vec3 position;
@@ -398,10 +558,25 @@ fn main() {
                     uniform mat4 view;
                     uniform vec3 bb_min;
                     uniform vec3 bb_max;
+                    flat out vec3 vertex_color;
                     
                     void main() {
                         // Note: matrices are provided column-major so no transpose is necessary.
                         // Apply model = translation * rotation * scale, then view and projection.
+                         vec3 positions[10]; 
+
+                         positions[0] = vec3(0.0, 0.0, 0.0);
+                         positions[1] = vec3(0.2, 0.2, 0.2);
+                        positions[2] = vec3(0.4, 0.4, 0.4);
+                        positions[3] = vec3(0.6, 0.6, 0.6);
+                        positions[4] = vec3(0.8, 0.8, 0.8);
+                        positions[5] = vec3(0.6, 0.6, 0.6);
+                        positions[6] = vec3(0.7, 0.7, 0.7);
+                        positions[7] = vec3(0.8, 0.8, 0.8);
+                        positions[8] = vec3(0.9, 0.9, 0.9);
+                        positions[9] = vec3(1.0, 1.0, 1.0);
+                        
+                        vertex_color = positions[(gl_VertexID / 3) % 5];
                         v_uv = uv;
                         vec3 center = (bb_min + bb_max) / 2;
                         gl_Position = projection * view * translation * rotation * scale * vec4((position - center), 1.0);
@@ -411,21 +586,18 @@ fn main() {
             let fragment_shader_src = r#"
                     #version 140
                     in vec2 v_uv;
+                    uniform float shading_lerp_val;
                     out vec4 color;
-
+                    flat in vec3 vertex_color;
                     uniform sampler2D tex;
 
                     void main() {
-                        color = texture(tex, v_uv);
+                        color = mix(vec4(vertex_color, 1.0), texture(tex, v_uv), shading_lerp_val);
                     }
                 "#;
 
-            let program = glium::Program::from_source(
-                &display,
-                vertex_shader_src,
-                fragment_shader_src,
-                None,
-            );
+            let program =
+                glium::Program::from_source(&display, vertex_shader_src, fragment_shader_src, None);
             let mut app = App {
                 display,
                 window,
@@ -434,6 +606,16 @@ fn main() {
                 program,
                 tex: texture,
                 w_h,
+                shading_lerp_val: 0.0,
+                set_texture: false,
+                fram_time: 1.0 / 60.0,
+                rotation_axis: [0.0, 1.0, 0.0],
+                rotation_direction: 1.0,
+                lerp_time: 0.0,
+                key: PhysicalKey::Code(winit::keyboard::KeyCode::F1),
+                isrepeat_key: false,
+                is_key_pressed: false,
+                trigger_rot_anim: false,
             };
 
             let _run = event_loop.run_app(&mut app);
