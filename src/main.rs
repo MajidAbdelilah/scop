@@ -203,9 +203,9 @@ impl ApplicationHandler for App {
                     let mut i = 0;
                     for color in 0..5
                     {
-                        self.color.color_position[i][0] = (self.color.color_position[(i+6) % 5][i % 3] + self.time_mul_delta as f32 * 2.0).sin().abs();
-                        self.color.color_position[i][1] = (self.color.color_position[(i+3) % 5][i % 3] + self.time_mul_delta as f32 * 1.0).cos().abs();
-                        self.color.color_position[i][2] = (self.color.color_position[(i+2) % 5][i % 3] + self.time_mul_delta as f32 * 2.0).cos().abs();
+                        self.color.color_position[i][0] = (self.color.color_position[(i+6) % 5][i % 3] + self.time_mul_delta as f32 * 3.5).cos().abs();
+                        self.color.color_position[i][1] = (self.color.color_position[(i+3) % 5][i % 3] + self.time_mul_delta as f32 * 2.5).cos().abs();
+                        self.color.color_position[i][2] = (self.color.color_position[(i+2) % 5][i % 3] + self.time_mul_delta as f32 * 1.5).cos().abs();
                         self.color.color_position[i][3] = 0.0;
                         println!("color: {:?}", color);
                         i += 1;
