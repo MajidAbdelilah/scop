@@ -200,15 +200,12 @@ impl ApplicationHandler for App {
 
                 if self.is_lizzard
                 {
-                    let mut i = 0;
-                    for color in 0..5
+                    for i in 0..5
                     {
                         self.color.color_position[i][0] = (self.color.color_position[(i+6) % 5][i % 3] + self.time_mul_delta as f32 * 3.5).cos().abs();
                         self.color.color_position[i][1] = (self.color.color_position[(i+3) % 5][i % 3] + self.time_mul_delta as f32 * 2.5).cos().abs();
                         self.color.color_position[i][2] = (self.color.color_position[(i+2) % 5][i % 3] + self.time_mul_delta as f32 * 1.5).cos().abs();
                         self.color.color_position[i][3] = 0.0;
-                        println!("color: {:?}", color);
-                        i += 1;
                     }
 
 
@@ -329,11 +326,7 @@ impl ApplicationHandler for App {
                     }
                 }
 
-                println!("rotation axis: {:?}", self.rotation_axis);
-
-                println!("rotation axis: {:?}", self.lerp_time);
-
-                println!("rotation axis: {:?}", self.rotation_direction);
+                
 
                 if self.set_texture && self.shading_lerp_val < 1.0 {
                     self.shading_lerp_val += (2.0 * self.fram_time) as f32;
@@ -371,7 +364,7 @@ impl ApplicationHandler for App {
                         // column 2
                         [0.0, 0.0, 1.0, 0.0],
                         // column 3 (translation goes in rows 0..2 of column 3, w=1 at row3)
-                        [0.0, 0.0, 2.0, 1.0],
+                        [0.0, 0.0, 5.0, 1.0],
                     ],
                 };
 
@@ -385,9 +378,9 @@ impl ApplicationHandler for App {
                 // Scale (identity here) in column-major
                 let scale_mat: Mat4f = Mat4f {
                     data: [
-                        [1.0, 0.0, 0.0, 0.0],
-                        [0.0, 1.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0],
+                        [0.001, 0.0, 0.0, 0.0],
+                        [0.0, 0.001, 0.0, 0.0],
+                        [0.0, 0.0, 0.001, 0.0],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                 };

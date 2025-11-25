@@ -8,7 +8,7 @@ glium::implement_vertex!(Vertex, position, uv);
 
 pub struct Obj {
     pub vertices: Vec<Vertex>,
-    pub faces: Vec<[u32; 4]>,
+    pub faces: Vec<Vec<u32>>,
     pub indices: Vec<u32>,
     pub file_name: String,
     pub texture: Vec<u8>,
@@ -52,7 +52,7 @@ impl Obj {
                 let mut simple_parse_func =
                     |line: &str,
                      arr: Option<&mut Vec<Vertex>>,
-                     arr_faces: Option<&mut Vec<[u32; 4]>>,
+                     arr_faces: Option<&mut Vec<Vec<u32>>>,
                      failed_bool: &mut bool| {
                         let parts = line[2..].split_ascii_whitespace();
                         let mut index = 0;
@@ -60,7 +60,7 @@ impl Obj {
                             position: [0.0; 3],
                             uv: [0.0; 2],
                         };
-                        let mut vertex_face: [u32; 4] = [0; 4];
+                        let mut vertex_face: Vec<u32> = Vec::new();
                         for part in parts
                         {
                             if part.starts_with("#")
@@ -132,10 +132,13 @@ impl Obj {
                                     let ver = ver.parse::<u32>();
                                     match ver {
                                         Ok(v) => {
-                                            if index < 4 {
-                                                vertex_face[index] = v;
+                                            if v == 0 {
+                                                println!("Warning: face index 0 is invalid (OBJ indices are 1-based)");
+                                                *failed_bool = true;
+                                            } else {
+                                                vertex_face.push(v);
+                                                index += 1;
                                             }
-                                            index += 1;
                                         }
                                         Err(e) => {
                                             println!("Failed to parse face value: {}", e);
@@ -155,11 +158,16 @@ impl Obj {
                             }
                             match arr_faces {
                                 Some(f_arr) => {
-                                    f_arr.push(vertex_face);
+                                    if vertex_face.len() >= 3 {
+                                        f_arr.push(vertex_face);
+                                    } else {
+                                        println!("Warning: face with {} vertices (minimum 3 required): {}", vertex_face.len(), line);
+                                        *failed_bool = true;
+                                    }
                                 }
                                 None => {}
                             }
-                        } else if index == 4 {
+                        } else if index >= 4 {
                             match arr {
                                 Some(_) => {
                                     println!(
@@ -172,12 +180,17 @@ impl Obj {
                             }
                             match arr_faces {
                                 Some(f_arr) => {
-                                    f_arr.push(vertex_face);
+                                    if vertex_face.len() >= 3 {
+                                        f_arr.push(vertex_face);
+                                    } else {
+                                        println!("Warning: face with {} vertices (minimum 3 required): {}", vertex_face.len(), line);
+                                        *failed_bool = true;
+                                    }
                                 }
                                 None => {}
                             }
-                        } else {
-                            println!("incorrect vertex or face data: {}, index = {}", line, index);
+                        } else if index > 0 {
+                            println!("incorrect vertex or face data: {}, index = {} (minimum 3 vertices per face required)", line, index);
                             *failed_bool = true;
                         }
                     };
@@ -221,24 +234,36 @@ impl Obj {
                     return Err("Failed to parse face data".to_string());
                 }
 
-                // indices
-                for face in &obj_instance.faces {
+                // indices - triangulate faces with dynamic vertex count using fan triangulation
+                for (face_idx, face) in obj_instance.faces.iter().enumerate() {
+                    let vertex_count = face.len();
                     
-                    if face[3] == 0
-                    {
-                        for index in *face {
-                            if index != 0  {
-                                obj_instance.indices.push(index - 1);
-                            }
-                        }   
-                    } else {
-                        obj_instance.indices.push(face[0] - 1);
-                        obj_instance.indices.push(face[1] - 1);
-                        obj_instance.indices.push(face[2] - 1);
-
-                        obj_instance.indices.push(face[0] - 1);
-                        obj_instance.indices.push(face[2] - 1);
-                        obj_instance.indices.push(face[3] - 1);
+                    // Validate minimum vertex count
+                    if vertex_count < 3 {
+                        println!("Error: Face {} has {} vertices (minimum 3 required): {:?}", face_idx, vertex_count, face);
+                        return Err(format!("Invalid face {} with {} vertices (minimum 3 required)", face_idx, vertex_count));
+                    }
+                    
+                    // Validate all indices are within bounds
+                    for (i, &vertex_idx) in face.iter().enumerate() {
+                        if vertex_idx == 0 {
+                            println!("Error: Face {} vertex {} has index 0 (OBJ indices are 1-based): {:?}", face_idx, i, face);
+                            return Err(format!("Face {} contains invalid vertex index 0", face_idx));
+                        }
+                        if vertex_idx > obj_instance.vertices.len() as u32 {
+                            println!("Error: Face {} vertex {} index {} exceeds vertex count {}: {:?}", 
+                                face_idx, i, vertex_idx, obj_instance.vertices.len(), face);
+                            return Err(format!("Face {} references non-existent vertex {} (total vertices: {})", 
+                                face_idx, vertex_idx, obj_instance.vertices.len()));
+                        }
+                    }
+                    
+                    // Fan triangulation: use vertex 0 as pivot and create triangles with consecutive pairs
+                    // For n vertices, we create (n-2) triangles
+                    for i in 1..(vertex_count - 1) {
+                        obj_instance.indices.push(face[0] - 1);       // Pivot vertex (convert to 0-based)
+                        obj_instance.indices.push(face[i] - 1);       // Current vertex
+                        obj_instance.indices.push(face[i + 1] - 1);   // Next vertex
                     }
                 }
 
