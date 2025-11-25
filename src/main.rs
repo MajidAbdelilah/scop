@@ -179,6 +179,11 @@ impl ApplicationHandler for App {
                     && event.repeat == false
                 {
                     self.is_lizzard = !self.is_lizzard;
+                    if !self.is_lizzard
+                    {
+                        self.color = ColorArr { color_position: [[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2], [0.3, 0.3, 0.3, 0.0], [0.4, 0.4, 0.4, 0.0], [0.5, 0.5, 0.5, 0.0]] };
+                        self.color_positions.write(&self.color);
+                    }
                 }
 
                 self.key = event.physical_key;
@@ -198,9 +203,9 @@ impl ApplicationHandler for App {
                     let mut i = 0;
                     for color in 0..5
                     {
-                        self.color.color_position[i][0] = (self.color.color_position[(i+6) % 5][i % 3] + self.time_mul_delta as f32 * 4.0).sin().abs();
-                        self.color.color_position[i][1] = (self.color.color_position[(i+3) % 5][i % 3] + self.time_mul_delta as f32 * 2.0).cos().abs();
-                        self.color.color_position[i][2] = (self.color.color_position[(i+2) % 5][i % 3] + self.time_mul_delta as f32 * 4.0).cos().abs();
+                        self.color.color_position[i][0] = (self.color.color_position[(i+6) % 5][i % 3] + self.time_mul_delta as f32 * 2.0).sin().abs();
+                        self.color.color_position[i][1] = (self.color.color_position[(i+3) % 5][i % 3] + self.time_mul_delta as f32 * 1.0).cos().abs();
+                        self.color.color_position[i][2] = (self.color.color_position[(i+2) % 5][i % 3] + self.time_mul_delta as f32 * 2.0).cos().abs();
                         self.color.color_position[i][3] = 0.0;
                         println!("color: {:?}", color);
                         i += 1;
