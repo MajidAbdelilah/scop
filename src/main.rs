@@ -36,6 +36,7 @@ pub struct App {
     isrepeat_key: bool,
     is_key_pressed: bool,
     trigger_rot_anim: (bool, winit::keyboard::PhysicalKey),
+    trigger_rot_reverse: (bool, f32, f32, f32),
     color_positions: glium::uniforms::UniformBuffer<ColorArr>,
     color: ColorArr,
     is_lizzard: bool,
@@ -175,8 +176,8 @@ impl ApplicationHandler for App {
                     self.set_texture = !self.set_texture;
                 }
                 if event.physical_key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyT)
-                    && event.state.is_pressed()
-                    && event.repeat == false
+                && event.state.is_pressed()
+                && event.repeat == false
                 {
                     self.is_lizzard = !self.is_lizzard;
                     if !self.is_lizzard
@@ -185,7 +186,8 @@ impl ApplicationHandler for App {
                         self.color_positions.write(&self.color);
                     }
                 }
-
+                
+                
                 self.key = event.physical_key;
                 self.isrepeat_key = event.repeat;
                 self.is_key_pressed = event.state.is_pressed();
@@ -197,7 +199,27 @@ impl ApplicationHandler for App {
                 let mut target = self.display.draw();
                 target.clear_color_and_depth((1.0, 1.0, 1.0, 1.0), 1.0);
                 self.time_mul_delta += 1.0 * self.fram_time;
+                
+                if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyY)
+                    && self.is_key_pressed
+                    && self.isrepeat_key == false
+                {
+                    self.trigger_rot_reverse = (true, if self.rotation_direction <= 0.0  {1.0} else {-1.0}, self.rotation_direction, 0.0);
+                }
 
+                if self.trigger_rot_reverse.0 
+                {
+                    self.rotation_direction = lerp(self.rotation_direction, self.trigger_rot_reverse.1 , self.trigger_rot_reverse.3);
+                     if (self.trigger_rot_reverse.1 - self.rotation_direction).abs() < 0.01
+                     {
+                        self.rotation_direction = self.rotation_direction.round();
+                        self.trigger_rot_reverse.0 = false;
+                        self.trigger_rot_reverse.2 = 0.0;
+                     } 
+                     println!("self.trigger_rot_reverse.1 = {} , self.rotation_direction = {}", self.trigger_rot_reverse.1, self.rotation_direction);
+                    self.trigger_rot_reverse.3 += (0.001 * self.fram_time) as f32;
+                }
+                
                 if self.is_lizzard
                 {
                     for i in 0..5
@@ -213,7 +235,7 @@ impl ApplicationHandler for App {
                 }
                 
                 self.t +=  2.0 * self.fram_time;
-                if self.t >= (std::f64::consts::PI * 2.0) && self.trigger_rot_anim.0 == false
+                if self.t >= (std::f64::consts::PI * 2.0) && self.trigger_rot_anim.0 == false && self.trigger_rot_reverse.0 == false
                 {
                     self.t -= std::f64::consts::PI * 2.0;
                 }
@@ -364,7 +386,7 @@ impl ApplicationHandler for App {
                         // column 2
                         [0.0, 0.0, 1.0, 0.0],
                         // column 3 (translation goes in rows 0..2 of column 3, w=1 at row3)
-                        [0.0, 0.0, 5.0, 1.0],
+                        [0.0, 0.0, 2.0, 1.0],
                     ],
                 };
 
@@ -378,9 +400,9 @@ impl ApplicationHandler for App {
                 // Scale (identity here) in column-major
                 let scale_mat: Mat4f = Mat4f {
                     data: [
-                        [0.001, 0.0, 0.0, 0.0],
-                        [0.0, 0.001, 0.0, 0.0],
-                        [0.0, 0.0, 0.001, 0.0],
+                        [1.0, 0.0, 0.0, 0.0],
+                        [0.0, 1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0, 0.0],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                 };
@@ -645,6 +667,7 @@ fn main() {
                 isrepeat_key: false,
                 is_key_pressed: false,
                 trigger_rot_anim: (false, PhysicalKey::Code(winit::keyboard::KeyCode::F1)),
+                trigger_rot_reverse: (false, 1.0, 1.0, 0.0),
                 color_positions: colors_uniform,
                 is_lizzard: false,
                 color: ColorArr { color_position: [[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2], [0.3, 0.3, 0.3, 0.0], [0.4, 0.4, 0.4, 0.0], [0.5, 0.5, 0.5, 0.0]] },
