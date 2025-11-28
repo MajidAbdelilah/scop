@@ -41,6 +41,8 @@ pub struct App {
     color: ColorArr,
     is_lizzard: bool,
     time_mul_delta: f64,
+    pos: [f32; 3],
+    scale: [f32; 3],
 }
 
 fn dot(a: &[f32; 3], b: &[f32; 3]) -> f32 {
@@ -175,6 +177,11 @@ impl ApplicationHandler for App {
                 {
                     self.set_texture = !self.set_texture;
                 }
+                
+                
+
+
+
                 if event.physical_key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyT)
                 && event.state.is_pressed()
                 && event.repeat == false
@@ -200,6 +207,20 @@ impl ApplicationHandler for App {
                 target.clear_color_and_depth((1.0, 1.0, 1.0, 1.0), 1.0);
                 self.time_mul_delta += 1.0 * self.fram_time;
                 
+
+                if self.is_key_pressed
+                {
+                    self.pos[0] += ((self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyA)) as i16 * 10) as f32 * self.fram_time as f32;
+                    self.pos[0] -= ((self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyZ)) as i16 * 10) as f32 * self.fram_time as f32;
+                    
+                    self.pos[1] += ((self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyS)) as i16 * 10) as f32 * self.fram_time as f32;
+                    self.pos[1] -= ((self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyX)) as i16 * 10) as f32 * self.fram_time as f32;
+                    
+                    self.pos[2] += ((self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyD)) as i16 * 10) as f32 * self.fram_time as f32;
+                    self.pos[2] -= ((self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyC)) as i16 * 10) as f32 * self.fram_time as f32;
+                                        
+                }
+
                 if self.key == PhysicalKey::Code(winit::keyboard::KeyCode::KeyY)
                     && self.is_key_pressed
                     && self.isrepeat_key == false
@@ -386,7 +407,7 @@ impl ApplicationHandler for App {
                         // column 2
                         [0.0, 0.0, 1.0, 0.0],
                         // column 3 (translation goes in rows 0..2 of column 3, w=1 at row3)
-                        [0.0, 0.0, 2.0, 1.0],
+                        [self.pos[0], self.pos[1], self.pos[2], 1.0],
                     ],
                 };
 
@@ -400,9 +421,9 @@ impl ApplicationHandler for App {
                 // Scale (identity here) in column-major
                 let scale_mat: Mat4f = Mat4f {
                     data: [
-                        [1.0, 0.0, 0.0, 0.0],
-                        [0.0, 1.0, 0.0, 0.0],
-                        [0.0, 0.0, 1.0, 0.0],
+                        [self.scale[0], 0.0, 0.0, 0.0],
+                        [0.0, self.scale[1], 0.0, 0.0],
+                        [0.0, 0.0, self.scale[2], 0.0],
                         [0.0, 0.0, 0.0, 1.0],
                     ],
                 };
@@ -586,17 +607,17 @@ fn main() {
     match obj {
         Ok(o) => {
             println!("Successfully parsed OBJ file:");
-            for vertex in &o.vertices {
-                println!(
-                    "Vertex position: {:?}, UV: {:?}",
-                    vertex.position, vertex.uv
-                );
-            }
-            println!("Faces: {:?}", o.faces);
-            println!("Indices: {:?}", o.indices);
-            println!("File Name: {}", o.file_name);
-            // println!("texture: {:?}", o.texture);
-            println!("bb: {:?}", o.bb);
+            // for vertex in &o.vertices {
+            //     println!(
+            //         "Vertex position: {:?}, UV: {:?}",
+            //         vertex.position, vertex.uv
+            //     );
+            // }
+            // println!("Faces: {:?}", o.faces);
+            // println!("Indices: {:?}", o.indices);
+            // println!("File Name: {}", o.file_name);
+            // // println!("texture: {:?}", o.texture);
+            // println!("bb: {:?}", o.bb);
             let image = glium::texture::RawImage2d::from_raw_rgb_reversed(
                 o.texture.as_slice(),
                 (o.texture_width, o.texture_height),
@@ -672,6 +693,8 @@ fn main() {
                 is_lizzard: false,
                 color: ColorArr { color_position: [[0.1, 0.1, 0.1, 0.1], [0.2, 0.2, 0.2, 0.2], [0.3, 0.3, 0.3, 0.0], [0.4, 0.4, 0.4, 0.0], [0.5, 0.5, 0.5, 0.0]] },
                 time_mul_delta: 0.0,
+                pos: [0.0, 0.0, 3.0],
+                scale: [1.0, 1.0, 1.0],
             };
 
             let _run = event_loop.run_app(&mut app);
